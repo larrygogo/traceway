@@ -80,6 +80,124 @@ const logger = createLogger({
 });
 ```
 
+## 自定义扩展（Integrations / Transports）
+
+本库的扩展模型分为两类：
+
+- **Integration（采集/增强）**：在 `setup(logger)` 里注册事件监听，把“外部信号”（UI、路由、HTTP、性能、自定义业务事件…）转成 `logger.addBreadcrumb()` 或 `logger.info/warn/error()`。
+- **Transport（投递/落地）**：实现 `send(events)`，把已经处理好的事件批量发送到你的后端/SDK/本地存储等。
+
+事件进入 `Transport` 前已经按以下顺序处理：**采样 → 自动附加（warn/error）breadcrumbs → 脱敏 → beforeSend → 入队/批量 flush**。
+
+### 自定义 Transport
+
+你只需要实现一个 `Transport`：
+
+```typescript
+import type { Transport, LogEvent } from '@traceway/logger';
+
+export interface BeaconTransportOptions {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * 示例：优先使用 sendBeacon，上报失败再回退 fetch(keepalive)
+ * - 适合页面卸载/切后台时尽量把队列发出去
+ */
+export class BeaconTransport implements Transport {
+  constructor(private options: BeaconTransportOptions) {}
+
+  async send(events: LogEvent[]): Promise<void> {
+    // 注意：events 已经脱敏/序列化过；Transport 里不要再去修改引用
+    const body = JSON.stringify(events);
+
+    // 1) 优先 sendBeacon（更适合卸载场景）
+    if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
+      try {
+        const ok = navigator.sendBeacon(
+          this.options.url,
+          new Blob([body], { type: 'application/json' }),
+        );
+        if (ok) return;
+      } catch {
+        // 忽略，走 fallback
+      }
+    }
+
+    // 2) fallback：fetch keepalive（注意你的后端需要允许跨域/CORS）
+    if (typeof fetch !== 'undefined') {
+      try {
+        await fetch(this.options.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...this.options.headers },
+          body,
+          keepalive: true,
+        });
+      } catch {
+        // 静默失败（队列/Transport 设计就是“尽力而为”）
+      }
+    }
+  }
+}
+```
+
+**Transport 最佳实践**
+
+- **不要 throw**：虽然内部会捕获异常，但最佳实践是 Transport 自己兜底，避免影响其它 transports。
+- **尽量无副作用**：不要原地修改 `events`；不要在 `send()` 里再调用 `logger.*`（会产生递归/重复上报）。
+- **考虑卸载场景**：页面隐藏/卸载时会触发强制 flush，推荐 `sendBeacon` 或 `fetch(..., { keepalive: true })`。
+- **保持可重入**：flush 可能在短时间内多次触发，`send()` 设计上应能被并发调用且不依赖顺序。
+
+### 自定义 Integration
+
+你只需要实现一个 `Integration`：
+
+- `setup(logger)`：注册事件监听/打补丁，采集外部信号并调用 `logger.*`。
+- `teardown()`（可选）：在 `logger.destroy()` 时执行，用于移除监听、恢复补丁，防止内存泄漏。
+
+```typescript
+import type { Integration, Logger } from '@traceway/logger';
+
+/**
+ * 示例：记录“页面可见性变化”为 breadcrumb
+ *
+ * 注意：logger.addBreadcrumb 只有在你启用了 BreadcrumbIntegration 时才会生效
+ * （否则不会报错，但也不会记录）。
+ */
+export class VisibilityBreadcrumbIntegration implements Integration {
+  private onVisibilityChange?: () => void;
+
+  setup(logger: Logger): void {
+    if (typeof document === 'undefined') return;
+
+    this.onVisibilityChange = () => {
+      logger.addBreadcrumb({
+        type: 'custom',
+        message: `visibility: ${document.visibilityState}`,
+        data: { visibilityState: document.visibilityState },
+      });
+    };
+
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    this.onVisibilityChange();
+  }
+
+  teardown(): void {
+    if (typeof document === 'undefined' || !this.onVisibilityChange) return;
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    this.onVisibilityChange = undefined;
+  }
+}
+```
+
+**Integration 最佳实践**
+
+- **只做采集与增强**：Integration 更适合“从外部事件 → 产生日志/面包屑”；不要在其中做网络发送（交给 Transport）。
+- **避免递归**：如果你要 monkey-patch `console.*`、`fetch` 等全局对象，务必加重入保护（否则 ConsoleTransport/HttpIntegration 可能触发递归）。
+- **及时清理**：所有 `addEventListener` / `setInterval` / patch 都应在 `teardown()` 中恢复。
+- **Breadcrumb 依赖**：`logger.addBreadcrumb()` 依赖 `BreadcrumbIntegration` 作为全局管理器；你的自定义 Integration 若需要 breadcrumbs，请在配置里同时启用它。
+
 ## 配置选项
 
 ### LoggerOptions
