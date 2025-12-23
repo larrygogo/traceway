@@ -1,0 +1,21 @@
+{
+  "name": "traceway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "前端日志库 - 错误追踪、用户操作链路、性能监控",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "dev": "npm run dev --workspaces"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
+

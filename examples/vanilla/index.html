@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traceway Logger - Vanilla Example</title>
+</head>
+<body>
+  <h1>Traceway Logger 示例</h1>
+  
+  <div>
+    <button id="btn-info">记录 Info</button>
+    <button id="btn-error">触发错误</button>
+    <button id="btn-user">设置用户</button>
+  </div>
+
+  <script type="module">
+    import { createLogger, ConsoleTransport, HttpTransport, BreadcrumbIntegration, ErrorsIntegration, UIIntegration, NavigationIntegration, HttpIntegration } from '../../packages/logger/dist/index.mjs';
+
+    const logger = createLogger({
+      app: 'vanilla-example',
+      env: 'development',
+      release: '1.0.0',
+      level: 'debug',
+      transports: [
+        new ConsoleTransport(),
+        // new HttpTransport({
+        //   url: 'http://localhost:3000/logs',
+        // }),
+      ],
+      integrations: [
+        new BreadcrumbIntegration({ maxBreadcrumbs: 50 }),
+        new ErrorsIntegration(),
+        new UIIntegration(),
+        new NavigationIntegration(),
+        new HttpIntegration(),
+      ],
+    });
+
+    // 绑定事件
+    document.getElementById('btn-info').addEventListener('click', () => {
+      logger.info('button_click', 'Info button clicked', { button: 'btn-info' });
+    });
+
+    document.getElementById('btn-error').addEventListener('click', () => {
+      logger.error('manual_error', 'Manual error triggered');
+      throw new Error('This is a test error');
+    });
+
+    document.getElementById('btn-user').addEventListener('click', () => {
+      logger.setUser({ id: '123', name: 'John Doe', email: 'john@example.com' });
+      logger.info('user_set', 'User set');
+    });
+
+    // 测试 HTTP 请求
+    fetch('https://api.github.com/users/octocat')
+      .then(res => res.json())
+      .then(data => {
+        logger.info('api_success', 'GitHub API success', { login: data.login });
+      })
+      .catch(err => {
+        logger.error('api_error', 'GitHub API error', { error: err.message });
+      });
+  </script>
+</body>
+</html>
+
