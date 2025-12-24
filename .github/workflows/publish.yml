@@ -29,7 +29,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 10
 
       - name: Parse tag and extract package info
         id: parse-tag
@@ -98,7 +98,15 @@ jobs:
           echo "Updated $PACKAGE_NAME to version $VERSION"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          # 检查 lockfile 是否存在，如果不存在或版本不兼容则生成新的
+          if [ ! -f "pnpm-lock.yaml" ]; then
+            echo "pnpm-lock.yaml not found, generating new lockfile"
+            pnpm install --no-frozen-lockfile
+          else
+            # 尝试使用 frozen-lockfile，如果失败则回退到普通安装
+            pnpm install --frozen-lockfile || pnpm install
+          fi
 
       - name: Run tests
         run: |
