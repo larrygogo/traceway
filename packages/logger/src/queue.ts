@@ -32,6 +32,9 @@ export class EventQueue {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private errorFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private isDestroyed = false;
+  private visibilityChangeHandler: (() => void) | null = null;
+  private pageHideHandler: (() => void) | null = null;
+  private beforeUnloadHandler: (() => void) | null = null;
 
   constructor(options: QueueOptions, transports: Transport[]) {
     this.options = options;
@@ -141,17 +144,20 @@ export class EventQueue {
     };
 
     // visibilitychange 事件
-    document.addEventListener('visibilitychange', () => {
+    this.visibilityChangeHandler = () => {
       if (document.visibilityState === 'hidden') {
         flushOnHide();
       }
-    });
+    };
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
 
     // pagehide 事件（更可靠）
-    window.addEventListener('pagehide', flushOnHide);
+    this.pageHideHandler = flushOnHide;
+    window.addEventListener('pagehide', this.pageHideHandler);
 
     // beforeunload 事件（作为后备）
-    window.addEventListener('beforeunload', flushOnHide);
+    this.beforeUnloadHandler = flushOnHide;
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
   }
 
   /**
@@ -194,7 +200,7 @@ export class EventQueue {
   /**
    * 销毁队列
    */
-  destroy(): void {
+  async destroy(): Promise<void> {
     this.isDestroyed = true;
 
     // 清理定时器
@@ -208,8 +214,28 @@ export class EventQueue {
       this.errorFlushTimer = null;
     }
 
-    // 最后 flush 一次
-    this.flush(true);
+    // 移除事件监听器
+    if (typeof document !== 'undefined') {
+      if (this.visibilityChangeHandler) {
+        document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+        this.visibilityChangeHandler = null;
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      if (this.pageHideHandler) {
+        window.removeEventListener('pagehide', this.pageHideHandler);
+        this.pageHideHandler = null;
+      }
+
+      if (this.beforeUnloadHandler) {
+        window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+        this.beforeUnloadHandler = null;
+      }
+    }
+
+    // 最后 flush 一次（等待完成）
+    await this.flush(true);
   }
 }
 

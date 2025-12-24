@@ -246,7 +246,7 @@ export class LoggerImpl implements Logger {
     await this.queue.flush();
   }
 
-  destroy(): void {
+  async destroy(): Promise<void> {
     // 卸载 integrations
     for (const integration of this.integrations) {
       if (integration.teardown) {
@@ -255,7 +255,7 @@ export class LoggerImpl implements Logger {
     }
 
     // 销毁队列
-    this.queue.destroy();
+    await this.queue.destroy();
   }
 }
 

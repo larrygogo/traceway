@@ -40,8 +40,8 @@ describe('Logger', () => {
     });
   });
 
-  afterEach(() => {
-    logger.destroy();
+  afterEach(async () => {
+    await logger.destroy();
   });
 
   describe('日志方法', () => {
@@ -118,7 +118,7 @@ describe('Logger', () => {
       expect(events).toHaveLength(1);
       expect(events[0].level).toBe('warn');
 
-      warnLogger.destroy();
+      await warnLogger.destroy();
     });
   });
 
@@ -143,7 +143,7 @@ describe('Logger', () => {
 
       const events = mockTransport.send.mock.calls[0][0] as LogEvent[];
       expect(events[0].user).toEqual(user);
-      loggerWithoutRedact.destroy();
+      await loggerWithoutRedact.destroy();
     });
 
     it('应该能够清除用户信息', async () => {
@@ -204,7 +204,7 @@ describe('Logger', () => {
       const events = mockTransport.send.mock.calls[0][0] as LogEvent[];
       expect(events[0].msg).toBe('modified message');
 
-      loggerWithHook.destroy();
+      await loggerWithHook.destroy();
     });
 
     it('应该能够丢弃事件', async () => {
@@ -219,7 +219,7 @@ describe('Logger', () => {
 
       expect(mockTransport.send).not.toHaveBeenCalled();
 
-      loggerWithHook.destroy();
+      await loggerWithHook.destroy();
     });
   });
 
@@ -233,8 +233,8 @@ describe('Logger', () => {
   });
 
   describe('destroy', () => {
-    it('应该能够销毁 logger', () => {
-      expect(() => logger.destroy()).not.toThrow();
+    it('应该能够销毁 logger', async () => {
+      await expect(logger.destroy()).resolves.not.toThrow();
     });
   });
 });

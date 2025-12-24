@@ -101,7 +101,7 @@ export interface Logger {
   addBreadcrumb(breadcrumb: Omit<Breadcrumb, 'ts'>): void;
 
   flush(): void | Promise<void>;
-  destroy(): void;
+  destroy(): void | Promise<void>;
 }
 
 /**
