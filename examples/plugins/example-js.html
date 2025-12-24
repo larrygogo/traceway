@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traceway Logger - 插件化示例 (JavaScript)</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #666;
+      margin-top: 30px;
+    }
+    .section {
+      background: #f5f5f5;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      border-left: 4px solid #4CAF50;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button.secondary {
+      background: #2196F3;
+    }
+    button.secondary:hover {
+      background: #0b7dda;
+    }
+    button.danger {
+      background: #f44336;
+    }
+    button.danger:hover {
+      background: #da190b;
+    }
+    .log-output {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #4CAF50;
+      padding-left: 10px;
+    }
+    .log-entry.error {
+      border-left-color: #f44336;
+      color: #ff6b6b;
+    }
+    .log-entry.warn {
+      border-left-color: #ff9800;
+      color: #ffa726;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+    }
+    .code-block {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 10px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔌 Traceway Logger 插件化示例 (纯 JavaScript)</h1>
+  
+  <div class="info-box">
+    <strong>📚 本示例展示：</strong>
+    <ul>
+      <li>纯 JavaScript 实现的自定义 Integration 插件（页面可见性监听）</li>
+      <li>纯 JavaScript 实现的自定义 Transport 插件（LocalStorage 存储）</li>
+      <li>插件的组合使用（无需 TypeScript）</li>
+      <li>查看浏览器控制台和 LocalStorage 查看效果</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>操作面板</h2>
+    <div>
+      <button onclick="logInfo()">记录 Info 日志</button>
+      <button onclick="logWarning()" class="secondary">记录 Warning 日志</button>
+      <button onclick="logError()" class="danger">触发错误</button>
+      <button onclick="testFetch()">测试 HTTP 请求</button>
+      <button onclick="clearLogs()">清空日志显示</button>
+      <button onclick="showStorageLogs()">查看 LocalStorage 日志</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>自定义插件说明 (JavaScript 版本)</h2>
+    
+    <h3>1. VisibilityIntegration（自定义 Integration）</h3>
+    <div class="code-block">
+// 纯 JavaScript 实现
+export class VisibilityIntegration {
+  constructor() {
+    this.onVisibilityChange = undefined;
+    this.isSetup = false;
+  }
+
+  setup(logger) {
+    if (this.isSetup || typeof document === 'undefined') {
+      return;
+    }
+
+    this.isSetup = true;
+    this.onVisibilityChange = () => {
+      logger.addBreadcrumb({
+        type: 'custom',
+        message: `visibility: ${document.visibilityState}`,
+        data: { visibilityState: document.visibilityState },
+      });
+    };
+    
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    this.onVisibilityChange();
+  }
+
+  teardown() {
+    if (this.onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      this.onVisibilityChange = undefined;
+    }
+    this.isSetup = false;
+  }
+}
+    </div>
+    <p><strong>功能：</strong>监听页面可见性变化，记录为 Breadcrumb</p>
+    <p><strong>测试：</strong>切换浏览器标签页，查看控制台的 Breadcrumb</p>
+
+    <h3>2. LocalStorageTransport（自定义 Transport）</h3>
+    <div class="code-block">
+// 纯 JavaScript 实现
+export class LocalStorageTransport {
+  constructor(options = {}) {
+    this.options = {
+      key: options.key || 'traceway_logs',
+      maxSize: options.maxSize || 1000,
+    };
+  }
+
+  send(events) {
+    if (typeof localStorage === 'undefined') return;
+    
+    try {
+      const existing = localStorage.getItem(this.options.key);
+      const logs = existing ? JSON.parse(existing) : [];
+      logs.push(...events);
+      
+      if (logs.length > this.options.maxSize) {
+        logs.splice(0, logs.length - this.options.maxSize);
+      }
+      
+      localStorage.setItem(this.options.key, JSON.stringify(logs));
+    } catch (error) {
+      console.warn('[Traceway] LocalStorage transport failed:', error);
+    }
+  }
+}
+    </div>
+    <p><strong>功能：</strong>将日志保存到浏览器的 LocalStorage</p>
+    <p><strong>测试：</strong>点击"查看 LocalStorage 日志"按钮查看保存的日志</p>
+  </div>
+
+  <div class="section">
+    <h2>实时日志输出</h2>
+    <div id="log-output" class="log-output">
+      <div class="log-entry">等待日志输出...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // 导入 Traceway Logger
+    import { 
+      createLogger, 
+      ConsoleTransport,
+      BreadcrumbIntegration,
+      ErrorsIntegration,
+      UIIntegration,
+      HttpIntegration
+    } from '../../packages/logger/dist/index.mjs';
+
+    // 导入自定义插件 (JavaScript 版本)
+    import { VisibilityIntegration } from './plugins/visibility-integration.js';
+    import { LocalStorageTransport } from './plugins/local-storage-transport.js';
+
+    // 页面日志输出函数
+    function addLogToOutput(message, level = 'info') {
+      const output = document.getElementById('log-output');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${level}`;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      entry.textContent = `[${timestamp}] ${message}`;
+      
+      output.insertBefore(entry, output.firstChild);
+      
+      // 限制显示数量
+      while (output.children.length > 50) {
+        output.removeChild(output.lastChild);
+      }
+    }
+
+    // 创建 Logger，使用自定义插件
+    const logger = createLogger({
+      app: 'plugin-example-js',
+      env: 'development',
+      release: '1.0.0',
+      level: 'debug',
+      transports: [
+        new ConsoleTransport(),           // 控制台输出
+        new LocalStorageTransport({        // 自定义 Transport
+          key: 'traceway_logs',
+          maxSize: 500,
+        }),
+      ],
+      integrations: [
+        new BreadcrumbIntegration({ maxBreadcrumbs: 50 }),
+        new ErrorsIntegration(),
+        new VisibilityIntegration(),      // 自定义 Integration
+        new UIIntegration(),
+        new HttpIntegration(),
+      ],
+    });
+
+    // 拦截 ConsoleTransport 的输出，显示在页面上
+    const originalConsole = {
+      log: console.log,
+      info: console.info,
+      warn: console.warn,
+      error: console.error,
+    };
+
+    // 重写 console 方法以捕获日志
+    console.log = function(...args) {
+      originalConsole.log.apply(console, args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[')) {
+        addLogToOutput(args.join(' '), 'info');
+      }
+    };
+
+    console.info = function(...args) {
+      originalConsole.info.apply(console, args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[')) {
+        addLogToOutput(args.join(' '), 'info');
+      }
+    };
+
+    console.warn = function(...args) {
+      originalConsole.warn.apply(console, args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[')) {
+        addLogToOutput(args.join(' '), 'warn');
+      }
+    };
+
+    console.error = function(...args) {
+      originalConsole.error.apply(console, args);
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[')) {
+        addLogToOutput(args.join(' '), 'error');
+      }
+    };
+
+    // 全局函数供按钮调用
+    window.logInfo = () => {
+      logger.info('manual_info', 'Manual info log triggered', { 
+        timestamp: Date.now(),
+        source: 'button',
+      });
+      addLogToOutput('✅ Info log recorded', 'info');
+    };
+
+    window.logWarning = () => {
+      logger.warn('manual_warning', 'Manual warning log triggered', {
+        timestamp: Date.now(),
+        source: 'button',
+      });
+      addLogToOutput('⚠️ Warning log recorded', 'warn');
+    };
+
+    window.logError = () => {
+      logger.error('manual_error', 'Manual error log triggered', {
+        timestamp: Date.now(),
+        source: 'button',
+      });
+      addLogToOutput('❌ Error log recorded', 'error');
+      
+      // 触发一个未捕获的错误来测试 ErrorsIntegration
+      setTimeout(() => {
+        throw new Error('This is a test error from plugin example');
+      }, 100);
+    };
+
+    window.testFetch = async () => {
+      addLogToOutput('🌐 Testing HTTP request...', 'info');
+      try {
+        const response = await fetch('https://api.github.com/users/octocat');
+        const data = await response.json();
+        logger.info('api_success', 'GitHub API success', { 
+          login: data.login,
+          url: data.html_url,
+        });
+        addLogToOutput(`✅ HTTP request successful: ${data.login}`, 'info');
+      } catch (error) {
+        logger.error('api_error', 'GitHub API error', { 
+          error: error.message,
+        });
+        addLogToOutput(`❌ HTTP request failed: ${error.message}`, 'error');
+      }
+    };
+
+    window.clearLogs = () => {
+      const output = document.getElementById('log-output');
+      output.innerHTML = '<div class="log-entry">日志已清空...</div>';
+    };
+
+    window.showStorageLogs = () => {
+      try {
+        const logs = localStorage.getItem('traceway_logs');
+        if (logs) {
+          const parsedLogs = JSON.parse(logs);
+          console.log('📦 LocalStorage logs:', parsedLogs);
+          addLogToOutput(`📦 Found ${parsedLogs.length} log(s) in LocalStorage`, 'info');
+          addLogToOutput('查看浏览器控制台以查看完整日志数据', 'info');
+        } else {
+          addLogToOutput('📦 No logs in LocalStorage yet', 'info');
+        }
+      } catch (error) {
+        addLogToOutput(`❌ Failed to read LocalStorage: ${error.message}`, 'error');
+      }
+    };
+
+    // 初始化
+    logger.setUser({ id: 'demo-user', name: 'Demo User', email: 'demo@example.com' });
+    logger.info('app_start', 'Plugin example app started (JavaScript)');
+    addLogToOutput('🚀 Plugin example initialized (纯 JavaScript)', 'info');
+    addLogToOutput('💡 Try switching browser tabs to test VisibilityIntegration', 'info');
+  </script>
+</body>
+</html>
+
