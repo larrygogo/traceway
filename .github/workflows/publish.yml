@@ -2,18 +2,14 @@ name: Publish Package to npm
 
 # 重要：npm 认证配置说明
 # 
-# 推荐方案：Trusted Publishing（更安全，无需 token）
-# 1. 访问 https://www.npmjs.com/settings/[用户名]/publishing
-# 2. 配置 Trusted Publishing，授权 GitHub 仓库
-# 3. workflow 已配置 id-token: write 权限，自动使用 OIDC 认证
-# 
-# 备选方案：Granular Access Token（需要 Bypass 2FA）
+# 根据 npm 官方文档，从 2025年11月起只支持 Granular Access Tokens
 # 1. 在 npmjs.com 创建 Granular Access Token，类型选择 "Automation"
 # 2. 权限：Read packages, Write packages
-# 3. 必须启用 "Bypass 2FA"（npm 会提示安全风险，建议使用 Trusted Publishing）
+# 3. 必须启用 "Bypass 2FA"（发布包所必需）
 # 4. 将 token 添加到 GitHub Secrets 中，名称为 NPM_TOKEN
 # 
 # 详细说明请参考：.github/NPM_TOKEN_SETUP.md
+# 官方文档：https://docs.npmjs.com/about-access-tokens
 
 on:
   push:
