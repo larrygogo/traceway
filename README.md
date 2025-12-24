@@ -91,6 +91,8 @@ const logger = createLogger({
 
 ### 自定义 Transport
 
+这个示例用来实现**“更可靠的前端上报”**：在页面卸载/切后台等场景下，普通 `fetch` 可能被浏览器中断；通过 **`sendBeacon` 优先 + `fetch(keepalive)` 回退**，尽量把队列里的事件发送出去。
+
 你只需要实现一个 `Transport`：
 
 ```typescript
@@ -150,6 +152,8 @@ export class BeaconTransport implements Transport {
 - **保持可重入**：flush 可能在短时间内多次触发，`send()` 设计上应能被并发调用且不依赖顺序。
 
 ### 自定义 Integration
+
+这个示例用来实现**“把浏览器生命周期信号写进操作链路”**：记录页面从前台到后台、以及恢复到前台的变化（`visibilitychange`），帮助你在排查“切后台后请求失败/异常激增/白屏”时还原当时的页面状态。
 
 你只需要实现一个 `Integration`：
 
