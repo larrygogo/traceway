@@ -164,14 +164,28 @@ jobs:
           if npm whoami --registry https://registry.npmjs.org/ > /dev/null 2>&1; then
             echo "✓ npm authentication successful"
             npm whoami --registry https://registry.npmjs.org/
+            echo ""
+            echo "Note: Authentication check passed, but publishing requires:"
+            echo "  - Granular Access Token (starts with 'npm_')"
+            echo "  - Token type: 'Automation'"
+            echo "  - 'Bypass 2FA' permission enabled"
+            echo "  - 'Write packages' permission"
+            echo "  - Access to @traceway scope"
+            echo ""
+            echo "If publish fails with 403 error, please check:"
+            echo "  https://www.npmjs.com/settings/[username]/tokens"
+            echo "  See .github/NPM_TOKEN_SETUP.md for detailed instructions"
           else
             echo "✗ npm authentication failed"
+            echo ""
             echo "Please ensure:"
             echo "1. NPM_TOKEN is a Granular Access Token (not Classic Token)"
             echo "2. Token type is 'Automation'"
             echo "3. Token has 'Bypass 2FA' enabled"
             echo "4. Token has 'Read packages' and 'Write packages' permissions"
             echo "5. Token has access to @traceway scope"
+            echo ""
+            echo "See .github/NPM_TOKEN_SETUP.md for detailed setup instructions"
             exit 1
           fi
 
