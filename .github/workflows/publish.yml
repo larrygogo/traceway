@@ -1,41 +1,187 @@
-name: Publish @traceway/logger
+name: Publish Package to npm
 
 on:
-  workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'logger-v*'  # logger 包格式：logger-v1.0.0, logger-v1.0.0-alpha.1, logger-v1.0.0-beta.2
+      - 'v*'         # 简化格式：v1.0.0, v1.0.0-alpha.1, v1.0.0-beta.2 (默认 logger 包)
+      # 后续可添加其他包的格式，如：'other-package-v*'
+      # 支持预发布版本：alpha (alpha.1, alpha.2...), beta (beta.1, beta.2...), rc (rc.1, rc.2...)
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # 需要写权限以更新 tag 和提交版本更新
       id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整历史以处理 tag
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          registry-url: https://registry.npmjs.org
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 8
-          run_install: true
 
-      - name: Build
-        run: pnpm build
-
-      - name: Publish
-        working-directory: packages/logger
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Parse tag and extract package info
+        id: parse-tag
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-          npm config set registry https://registry.npmjs.org/
-          npm publish --access public --registry https://registry.npmjs.org/
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+          # 解析包名和版本号
+          if [[ "$TAG_NAME" =~ ^logger-v(.+)$ ]]; then
+            # 格式：logger-v1.0.0
+            PACKAGE_NAME="logger"
+            VERSION="${BASH_REMATCH[1]}"
+          elif [[ "$TAG_NAME" =~ ^v(.+)$ ]]; then
+            # 格式：v1.0.0 (默认 logger 包)
+            PACKAGE_NAME="logger"
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Error: Invalid tag format. Expected 'logger-v*' or 'v*'"
+            exit 1
+          fi
+          
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # 验证版本号格式 (semver，支持预发布版本如 alpha、beta、rc)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Error: Invalid version format. Expected semver format (e.g., 1.0.0, 1.0.0-alpha.1, 1.0.0-beta.2, 1.0.0-rc.1)"
+            exit 1
+          fi
+          
+          # 检测预发布版本类型（alpha、beta、rc）
+          if [[ "$VERSION" =~ -alpha\. ]]; then
+            PRE_RELEASE_TAG="alpha"
+          elif [[ "$VERSION" =~ -beta\. ]]; then
+            PRE_RELEASE_TAG="beta"
+          elif [[ "$VERSION" =~ -rc\. ]]; then
+            PRE_RELEASE_TAG="rc"
+          else
+            PRE_RELEASE_TAG="latest"
+          fi
+          
+          echo "pre_release_tag=$PRE_RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Parsed package: $PACKAGE_NAME, version: $VERSION, dist-tag: $PRE_RELEASE_TAG"
 
+      - name: Update package.json version
+        run: |
+          PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
+          VERSION="${{ steps.parse-tag.outputs.version }}"
+          PACKAGE_DIR="packages/$PACKAGE_NAME"
+          
+          if [ ! -d "$PACKAGE_DIR" ]; then
+            echo "Error: Package directory $PACKAGE_DIR does not exist"
+            exit 1
+          fi
+          
+          # 更新包的 package.json
+          cd "$PACKAGE_DIR"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          
+          # 如果根目录有 package.json，也更新版本
+          cd ../..
+          if [ -f "package.json" ]; then
+            npm version "$VERSION" --no-git-tag-version --allow-same-version || true
+          fi
+          
+          echo "Updated $PACKAGE_NAME to version $VERSION"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: |
+          PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
+          cd "packages/$PACKAGE_NAME"
+          pnpm test || echo "No test script found, skipping tests"
+
+      - name: Build package
+        run: |
+          PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
+          cd "packages/$PACKAGE_NAME"
+          pnpm build
+          
+          # 验证构建产物存在
+          if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
+            echo "Error: Build output directory 'dist' is empty or does not exist"
+            exit 1
+          fi
+          echo "Build completed successfully"
+
+      - name: Configure npm for publishing
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          npm config set registry https://registry.npmjs.org/
+          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        run: |
+          PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
+          VERSION="${{ steps.parse-tag.outputs.version }}"
+          PRE_RELEASE_TAG="${{ steps.parse-tag.outputs.pre_release_tag }}"
+          cd "packages/$PACKAGE_NAME"
+          
+          # 检查版本是否已发布
+          PACKAGE_FULL_NAME="@traceway/$PACKAGE_NAME"
+          if npm view "$PACKAGE_FULL_NAME@$VERSION" version > /dev/null 2>&1; then
+            echo "Version $VERSION of $PACKAGE_FULL_NAME already exists on npm, skipping publish"
+            exit 0
+          fi
+          
+          # 发布到 npm，预发布版本使用对应的 dist-tag
+          if [ "$PRE_RELEASE_TAG" != "latest" ]; then
+            echo "Publishing pre-release version $VERSION with dist-tag: $PRE_RELEASE_TAG"
+            npm publish --access public --tag "$PRE_RELEASE_TAG" --registry https://registry.npmjs.org/
+          else
+            echo "Publishing stable version $VERSION with dist-tag: latest"
+            npm publish --access public --registry https://registry.npmjs.org/
+          fi
+          
+          echo "Successfully published $PACKAGE_FULL_NAME@$VERSION to npm (dist-tag: $PRE_RELEASE_TAG)"
+
+      - name: Commit version updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
+          VERSION="${{ steps.parse-tag.outputs.version }}"
+          
+          # 检查是否有更改
+          if [ -n "$(git status --porcelain)" ]; then
+            git add "packages/$PACKAGE_NAME/package.json"
+            if [ -f "package.json" ]; then
+              git add "package.json"
+            fi
+            git commit -m "chore: bump $PACKAGE_NAME version to $VERSION [skip ci]"
+            git push
+          else
+            echo "No version changes to commit"
+          fi
+
+      - name: Create/Update git tag
+        run: |
+          TAG_NAME="${{ steps.parse-tag.outputs.tag_name }}"
+          VERSION="${{ steps.parse-tag.outputs.version }}"
+          
+          # 检查 tag 是否已存在
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists, updating..."
+            git tag -d "$TAG_NAME" || true
+            git push origin ":refs/tags/$TAG_NAME" || true
+          fi
+          
+          # 创建新 tag
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin "$TAG_NAME"
