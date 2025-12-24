@@ -154,10 +154,19 @@ jobs:
           echo "Build completed successfully"
 
       - name: Configure npm for publishing
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # 显示配置信息
           echo "npm registry configured for @traceway scope"
           npm config get registry
+          
+          # 如果设置了 NPM_TOKEN，显式配置 .npmrc
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "Configuring npm with NPM_TOKEN..."
+            echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" >> ~/.npmrc
+            echo "@traceway:registry=https://registry.npmjs.org/" >> ~/.npmrc
+          fi
           
           # 验证认证方式
           echo "Verifying npm authentication..."
@@ -165,20 +174,33 @@ jobs:
             echo "✓ npm authentication successful"
             npm whoami --registry https://registry.npmjs.org/
             echo ""
-            echo "Using Trusted Publishing (OIDC) - recommended and secure"
+            if [ -n "$NODE_AUTH_TOKEN" ]; then
+              echo "Using NPM_TOKEN for authentication"
+            else
+              echo "Using Trusted Publishing (OIDC) - recommended and secure"
+            fi
           else
             echo "✗ npm authentication failed"
             echo ""
-            echo "Trusted Publishing not configured. Please:"
-            echo "1. Set up Trusted Publishing (recommended):"
-            echo "   https://www.npmjs.com/settings/[username]/publishing"
-            echo "   - Click 'Add GitHub'"
-            echo "   - Authorize your repository: ${{ github.repository }}"
-            echo "   - Select package: @traceway/logger"
-            echo ""
-            echo "2. Or use NPM_TOKEN (fallback):"
-            echo "   - Create Granular Access Token with 'Bypass 2FA'"
-            echo "   - Add to GitHub Secrets as NPM_TOKEN"
+            if [ -z "$NODE_AUTH_TOKEN" ]; then
+              echo "Trusted Publishing not configured. Please:"
+              echo "1. Set up Trusted Publishing (recommended):"
+              echo "   https://www.npmjs.com/settings/[username]/publishing"
+              echo "   - Click 'Add GitHub'"
+              echo "   - Authorize your repository: ${{ github.repository }}"
+              echo "   - Select package: @traceway/logger"
+              echo ""
+              echo "2. Or use NPM_TOKEN (fallback):"
+              echo "   - Create Granular Access Token with 'Bypass 2FA'"
+              echo "   - Add to GitHub Secrets as NPM_TOKEN"
+            else
+              echo "NPM_TOKEN authentication failed. Please check:"
+              echo "1. NPM_TOKEN is a Granular Access Token (starts with 'npm_')"
+              echo "2. Token type is 'Automation'"
+              echo "3. Token has 'Bypass 2FA' enabled"
+              echo "4. Token has 'Read packages' and 'Write packages' permissions"
+              echo "5. Token has access to @traceway scope"
+            fi
             echo ""
             echo "See .github/NPM_TOKEN_SETUP.md for detailed setup instructions"
             exit 1
