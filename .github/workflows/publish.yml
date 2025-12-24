@@ -1,11 +1,19 @@
 name: Publish Package to npm
 
 # 重要：npm 认证配置说明
-# 1. 需要在 npmjs.com 创建 Granular Access Token
-# 2. Token 类型选择 "Automation"
-# 3. 权限需要包含：Read packages, Write packages
-# 4. 必须启用 "Bypass 2FA" 选项（这是发布包所必需的）
-# 5. 将 token 添加到 GitHub Secrets 中，名称为 NPM_TOKEN
+# 
+# 推荐方案：Trusted Publishing（更安全，无需 token）
+# 1. 访问 https://www.npmjs.com/settings/[用户名]/publishing
+# 2. 配置 Trusted Publishing，授权 GitHub 仓库
+# 3. workflow 已配置 id-token: write 权限，自动使用 OIDC 认证
+# 
+# 备选方案：Granular Access Token（需要 Bypass 2FA）
+# 1. 在 npmjs.com 创建 Granular Access Token，类型选择 "Automation"
+# 2. 权限：Read packages, Write packages
+# 3. 必须启用 "Bypass 2FA"（npm 会提示安全风险，建议使用 Trusted Publishing）
+# 4. 将 token 添加到 GitHub Secrets 中，名称为 NPM_TOKEN
+# 
+# 详细说明请参考：.github/NPM_TOKEN_SETUP.md
 
 on:
   push:
@@ -32,8 +40,9 @@ jobs:
         with:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
-          # 使用 NPM_TOKEN 进行认证（需要 Granular Access Token 并启用 bypass 2FA）
           scope: '@traceway'
+          # 如果使用 Trusted Publishing，会自动使用 OIDC（无需 token）
+          # 如果使用 token，需要设置 NODE_AUTH_TOKEN 环境变量
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -148,42 +157,42 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # actions/setup-node 已经配置了认证，这里只需要确保配置正确
-          # 验证 token 是否有效
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "Error: NPM_TOKEN secret is not set"
-            exit 1
-          fi
-          
-          # 显示配置信息（不显示 token）
+          # 显示配置信息
           echo "npm registry configured for @traceway scope"
           npm config get registry
           
-          # 验证 token 权限（不显示敏感信息）
+          # 验证认证方式
           echo "Verifying npm authentication..."
           if npm whoami --registry https://registry.npmjs.org/ > /dev/null 2>&1; then
             echo "✓ npm authentication successful"
             npm whoami --registry https://registry.npmjs.org/
             echo ""
-            echo "Note: Authentication check passed, but publishing requires:"
-            echo "  - Granular Access Token (starts with 'npm_')"
-            echo "  - Token type: 'Automation'"
-            echo "  - 'Bypass 2FA' permission enabled"
-            echo "  - 'Write packages' permission"
-            echo "  - Access to @traceway scope"
-            echo ""
-            echo "If publish fails with 403 error, please check:"
-            echo "  https://www.npmjs.com/settings/[username]/tokens"
-            echo "  See .github/NPM_TOKEN_SETUP.md for detailed instructions"
+            
+            # 检查是否使用 Trusted Publishing（OIDC）
+            if [ -z "$NODE_AUTH_TOKEN" ]; then
+              echo "Using Trusted Publishing (OIDC) - recommended and secure"
+            else
+              echo "Using NPM_TOKEN - ensure it has 'Bypass 2FA' permission"
+              echo ""
+              echo "Note: For better security, consider using Trusted Publishing:"
+              echo "  https://www.npmjs.com/settings/[username]/publishing"
+            fi
           else
             echo "✗ npm authentication failed"
             echo ""
-            echo "Please ensure:"
-            echo "1. NPM_TOKEN is a Granular Access Token (not Classic Token)"
-            echo "2. Token type is 'Automation'"
-            echo "3. Token has 'Bypass 2FA' enabled"
-            echo "4. Token has 'Read packages' and 'Write packages' permissions"
-            echo "5. Token has access to @traceway scope"
+            if [ -z "$NODE_AUTH_TOKEN" ]; then
+              echo "Trusted Publishing not configured. Please either:"
+              echo "1. Set up Trusted Publishing (recommended):"
+              echo "   https://www.npmjs.com/settings/[username]/publishing"
+              echo "2. Or set NPM_TOKEN secret with Granular Access Token"
+            else
+              echo "NPM_TOKEN authentication failed. Please ensure:"
+              echo "1. NPM_TOKEN is a Granular Access Token (starts with 'npm_')"
+              echo "2. Token type is 'Automation'"
+              echo "3. Token has 'Bypass 2FA' enabled"
+              echo "4. Token has 'Read packages' and 'Write packages' permissions"
+              echo "5. Token has access to @traceway scope"
+            fi
             echo ""
             echo "See .github/NPM_TOKEN_SETUP.md for detailed setup instructions"
             exit 1
