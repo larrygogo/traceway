@@ -170,11 +170,7 @@ jobs:
             echo "✓ npm authentication successful"
             npm whoami --registry https://registry.npmjs.org/
             echo ""
-            if [ -n "$NODE_AUTH_TOKEN" ]; then
-              echo "Using NPM_TOKEN for authentication"
-            else
-              echo "Using Trusted Publishing (OIDC) - recommended and secure"
-            fi
+            echo "Using NPM_TOKEN (Granular Access Token) for authentication"
           else
             echo "✗ npm authentication failed"
             echo ""
@@ -203,7 +199,7 @@ jobs:
           fi
 
       - name: Publish to npm
-        # 如果设置了 NPM_TOKEN，使用 token；否则使用 Trusted Publishing (OIDC)
+        # 使用 NPM_TOKEN (Granular Access Token) 进行认证
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
