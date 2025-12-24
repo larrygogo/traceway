@@ -112,7 +112,14 @@ jobs:
         run: |
           PACKAGE_NAME="${{ steps.parse-tag.outputs.package_name }}"
           cd "packages/$PACKAGE_NAME"
-          pnpm test || echo "No test script found, skipping tests"
+          
+          # 检查 package.json 中是否有 test 脚本
+          if grep -q '"test"' package.json; then
+            echo "Running tests..."
+            pnpm test
+          else
+            echo "No test script found in package.json, skipping tests"
+          fi
 
       - name: Build package
         run: |
