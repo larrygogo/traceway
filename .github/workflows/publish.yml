@@ -41,8 +41,8 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
           scope: '@traceway'
-          # 如果使用 Trusted Publishing，会自动使用 OIDC（无需 token）
-          # 如果使用 token，需要设置 NODE_AUTH_TOKEN 环境变量
+          # Trusted Publishing: 不设置 NODE_AUTH_TOKEN，自动使用 OIDC
+          # Token 方式: 在后续步骤中设置 NODE_AUTH_TOKEN 环境变量
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -154,8 +154,6 @@ jobs:
           echo "Build completed successfully"
 
       - name: Configure npm for publishing
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # 显示配置信息
           echo "npm registry configured for @traceway scope"
@@ -167,38 +165,27 @@ jobs:
             echo "✓ npm authentication successful"
             npm whoami --registry https://registry.npmjs.org/
             echo ""
-            
-            # 检查是否使用 Trusted Publishing（OIDC）
-            if [ -z "$NODE_AUTH_TOKEN" ]; then
-              echo "Using Trusted Publishing (OIDC) - recommended and secure"
-            else
-              echo "Using NPM_TOKEN - ensure it has 'Bypass 2FA' permission"
-              echo ""
-              echo "Note: For better security, consider using Trusted Publishing:"
-              echo "  https://www.npmjs.com/settings/[username]/publishing"
-            fi
+            echo "Using Trusted Publishing (OIDC) - recommended and secure"
           else
             echo "✗ npm authentication failed"
             echo ""
-            if [ -z "$NODE_AUTH_TOKEN" ]; then
-              echo "Trusted Publishing not configured. Please either:"
-              echo "1. Set up Trusted Publishing (recommended):"
-              echo "   https://www.npmjs.com/settings/[username]/publishing"
-              echo "2. Or set NPM_TOKEN secret with Granular Access Token"
-            else
-              echo "NPM_TOKEN authentication failed. Please ensure:"
-              echo "1. NPM_TOKEN is a Granular Access Token (starts with 'npm_')"
-              echo "2. Token type is 'Automation'"
-              echo "3. Token has 'Bypass 2FA' enabled"
-              echo "4. Token has 'Read packages' and 'Write packages' permissions"
-              echo "5. Token has access to @traceway scope"
-            fi
+            echo "Trusted Publishing not configured. Please:"
+            echo "1. Set up Trusted Publishing (recommended):"
+            echo "   https://www.npmjs.com/settings/[username]/publishing"
+            echo "   - Click 'Add GitHub'"
+            echo "   - Authorize your repository: ${{ github.repository }}"
+            echo "   - Select package: @traceway/logger"
+            echo ""
+            echo "2. Or use NPM_TOKEN (fallback):"
+            echo "   - Create Granular Access Token with 'Bypass 2FA'"
+            echo "   - Add to GitHub Secrets as NPM_TOKEN"
             echo ""
             echo "See .github/NPM_TOKEN_SETUP.md for detailed setup instructions"
             exit 1
           fi
 
       - name: Publish to npm
+        # 如果设置了 NPM_TOKEN，使用 token；否则使用 Trusted Publishing (OIDC)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
