@@ -158,6 +158,22 @@ jobs:
           # 显示配置信息（不显示 token）
           echo "npm registry configured for @traceway scope"
           npm config get registry
+          
+          # 验证 token 权限（不显示敏感信息）
+          echo "Verifying npm authentication..."
+          if npm whoami --registry https://registry.npmjs.org/ > /dev/null 2>&1; then
+            echo "✓ npm authentication successful"
+            npm whoami --registry https://registry.npmjs.org/
+          else
+            echo "✗ npm authentication failed"
+            echo "Please ensure:"
+            echo "1. NPM_TOKEN is a Granular Access Token (not Classic Token)"
+            echo "2. Token type is 'Automation'"
+            echo "3. Token has 'Bypass 2FA' enabled"
+            echo "4. Token has 'Read packages' and 'Write packages' permissions"
+            echo "5. Token has access to @traceway scope"
+            exit 1
+          fi
 
       - name: Publish to npm
         env:
