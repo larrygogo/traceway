@@ -116,7 +116,8 @@ jobs:
           # 检查 package.json 中是否有 test 脚本
           if grep -q '"test"' package.json; then
             echo "Running tests..."
-            pnpm test
+            # 在 CI 环境中使用 --run 参数确保测试完成后退出
+            pnpm test:run || pnpm test --run || pnpm test
           else
             echo "No test script found in package.json, skipping tests"
           fi

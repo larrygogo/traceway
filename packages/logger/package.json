@@ -24,6 +24,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest --passWithNoTests",
+    "test:run": "vitest --passWithNoTests --run",
     "test:coverage": "vitest --coverage"
   },
   "keywords": [
